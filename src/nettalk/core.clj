@@ -36,23 +36,29 @@
               (map #(double-array (convert-phoneme phonemes %)) (subvec goal-vec (- i 3) (+ i 5))))}))
 
 (defn read-text
-  [fname]
+  [fname db]
   (with-open [rdr (io/reader fname)]
     (doall (for [line (line-seq rdr)]
-             (format "   %s   " (-> line
-                              (str/lower-case)
-                              (str/replace #"[^a-z]" " ")
-                              (str/replace #"^\s+" "")
-                              (str/replace #"\s+$" "")
-                              (str/replace #"\s+" " ")))))))
+             (let [words (-> line
+                            (str/lower-case)
+                            (str/replace #"[^a-z]" " ")
+                            (str/replace #"^\s+" "")
+                            (str/replace #"\s+$" "")
+                            (str/replace #"\s+" " ")
+                            (str/split #"\s"))]
+               (for [word words]
+                 (if (get db word) word (apply str (repeat (count word) \space)))))))))
 
 (defn assoc-text-goal
-  [text db]
-  (let [words (-> text (str/replace #"^\s+" "")
-                 (str/replace #"\s+$" "")
-                 (str/split #"\s"))]
-    (format "   %s   " (str/join " " (for [word words]
-                                  (get db word (apply str (repeat (count word) \space))))))))
+  [lines-words db]
+  (for [words lines-words]
+    (for [word words]
+      (get db word (apply str (repeat (count word) \space))))))
+
+(defn render-text
+  [lines-words]
+  (for [words lines-words]
+    (format "   %s   " (str/join " " words))))
 
 (defn read-db
   []
@@ -65,10 +71,11 @@
   []
   (let [db (read-db)
         phonemes (sort (set (apply concat (vals db))))
-        lines (vec (read-text "one-fish.txt"))
-        goals (vec (for [line lines] (assoc-text-goal line db)))
-        unary (for [i (range (count lines))]
-                (convert-to-unary (nth lines i) (nth goals i) phonemes))
+        lines-words (read-text "moby-dick-short.txt" db)
+        goals (vec (render-text (assoc-text-goal lines-words db)))
+        text (vec (render-text lines-words))
+        unary (for [i (range (count text))]
+                (convert-to-unary (nth text i) (nth goals i) phonemes))
         input (into-array (map double-array (apply concat (mapcat :input unary))))
         ideal (into-array (map double-array (apply concat (mapcat :ideal unary))))]
     (BasicMLDataSet. input ideal)))
@@ -91,7 +98,7 @@
   []
   (let [net (generate-network)
         dataset (generate-dataset)
-        train (Backpropagation. net dataset 0.1 0.1)]
+        train (Backpropagation. net dataset 0.01 0.1)]
     (loop [i 0]
       (if (not= i 1000)
         (do (.iteration train)
@@ -99,6 +106,7 @@
             (recur (inc i)))))))
 
 (defn -main
-  [])
+  []
+  (train))
 
 
